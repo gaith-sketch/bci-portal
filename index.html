@@ -1,0 +1,1681 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>BCI — Patient Journey</title>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;1,300;1,400&family=Inter:wght@300;400;500;600&family=Roboto+Mono:wght@300;400&display=swap" rel="stylesheet">
+<style>
+/* ═══════════════════════════════════════════
+   VARIABLES & RESET
+═══════════════════════════════════════════ */
+:root {
+  --navy:       #0D1B35;
+  --navy-mid:   #142040;
+  --navy-light: #1B2A4A;
+  --red:        #C0392B;
+  --gold:       #C9A84C;
+  --gold-light: #E8C96A;
+  --gold-dim:   rgba(201,168,76,0.15);
+  --white:      #FFFFFF;
+  --text-dim:   rgba(255,255,255,0.55);
+  --text-faint: rgba(255,255,255,0.25);
+  --border:     rgba(201,168,76,0.18);
+  --glass:      rgba(255,255,255,0.04);
+  --glass-border: rgba(255,255,255,0.08);
+}
+*, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
+html { scroll-behavior: smooth; }
+body {
+  font-family: 'Inter', sans-serif;
+  background: var(--navy);
+  color: var(--white);
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ═══════════════════════════════════════════
+   CANVAS BACKGROUND
+═══════════════════════════════════════════ */
+#bg-canvas {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+}
+
+/* ═══════════════════════════════════════════
+   ACTIVATION SCREEN
+═══════════════════════════════════════════ */
+#activation {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  background: var(--navy);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  transition: opacity 1.2s ease, visibility 1.2s ease;
+}
+#activation.out { opacity: 0; visibility: hidden; pointer-events: none; }
+
+.act-logo {
+  width: 160px;
+  height: auto;
+  opacity: 0;
+  filter: brightness(0) invert(1);
+  animation: act-logo-in 1s 0.3s forwards;
+}
+@keyframes act-logo-in {
+  from { opacity:0; transform: scale(0.85); filter: brightness(0) invert(1) drop-shadow(0 0 0px rgba(201,168,76,0)); }
+  to   { opacity:1; transform: scale(1);    filter: brightness(0) invert(1) drop-shadow(0 0 30px rgba(201,168,76,0.6)); }
+}
+
+.act-rings {
+  position: relative;
+  width: 160px;
+  height: 160px;
+  margin: 40px 0 32px;
+}
+.act-ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 1px solid var(--gold);
+  opacity: 0;
+  animation: ring-out 2.4s 1s ease-out infinite;
+}
+.act-ring:nth-child(2) { animation-delay: 1.8s; }
+.act-ring:nth-child(3) { animation-delay: 2.6s; }
+@keyframes ring-out {
+  0%   { transform: scale(0.4); opacity: 0.9; }
+  100% { transform: scale(2.2); opacity: 0; }
+}
+.act-center {
+  position: absolute;
+  inset: 30px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(201,168,76,0.2), transparent);
+  border: 1.5px solid var(--gold);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.act-heartbeat {
+  width: 60px;
+  height: 30px;
+  opacity: 0;
+  animation: hb-in 0.5s 1.2s forwards;
+}
+@keyframes hb-in { to { opacity:1; } }
+
+.act-label {
+  font-size: 11px;
+  letter-spacing: 5px;
+  color: var(--gold);
+  text-transform: uppercase;
+  opacity: 0;
+  animation: fade-up 0.8s 0.8s forwards;
+}
+.act-name {
+  font-family: 'Cormorant Garamond', serif;
+  font-size: clamp(36px, 6vw, 60px);
+  font-weight: 300;
+  color: var(--white);
+  margin-top: 12px;
+  opacity: 0;
+  animation: fade-up 0.8s 1.1s forwards;
+}
+.act-subtitle {
+  font-size: 13px;
+  color: var(--text-dim);
+  margin-top: 8px;
+  letter-spacing: 1px;
+  opacity: 0;
+  animation: fade-up 0.8s 1.4s forwards;
+}
+.act-bar {
+  width: 300px;
+  height: 1px;
+  background: rgba(255,255,255,0.08);
+  margin-top: 48px;
+  position: relative;
+  overflow: hidden;
+  opacity: 0;
+  animation: fade-up 0.5s 1.6s forwards;
+}
+.act-bar-fill {
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  width: 0;
+  background: linear-gradient(90deg, transparent, var(--gold), var(--gold-light));
+  animation: bar-fill 2.2s 1.8s cubic-bezier(0.4,0,0.2,1) forwards;
+}
+@keyframes bar-fill { to { width: 100%; } }
+@keyframes fade-up {
+  from { opacity:0; transform:translateY(16px); }
+  to   { opacity:1; transform:translateY(0); }
+}
+
+/* ═══════════════════════════════════════════
+   MAIN WRAPPER
+═══════════════════════════════════════════ */
+#portal {
+  position: relative;
+  z-index: 1;
+  opacity: 0;
+  transition: opacity 1s ease;
+}
+#portal.visible { opacity: 1; }
+
+/* ═══════════════════════════════════════════
+   PROGRESS BAR
+═══════════════════════════════════════════ */
+.progress-bar {
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  height: 2px;
+  background: rgba(255,255,255,0.05);
+  z-index: 999;
+}
+.progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--gold), var(--gold-light));
+  transition: width 1.2s ease;
+}
+
+/* ═══════════════════════════════════════════
+   PULSE STRIP
+═══════════════════════════════════════════ */
+.pulse-strip {
+  background: rgba(255,255,255,0.025);
+  border-bottom: 1px solid rgba(201,168,76,0.1);
+  padding: 13px 40px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--text-dim);
+  letter-spacing: 0.6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+.pulse-dot {
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  background: var(--stage-color, var(--gold));
+  flex-shrink: 0;
+  animation: blink 2.2s infinite;
+}
+@keyframes blink { 0%,100%{opacity:1;} 50%{opacity:0.15;} }
+
+/* ═══════════════════════════════════════════
+   HERO
+═══════════════════════════════════════════ */
+.hero {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  overflow: hidden;
+}
+.hero-mesh {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse 80% 60% at 20% 10%, rgba(192,57,43,0.10) 0%, transparent 60%),
+    radial-gradient(ellipse 70% 50% at 80% 80%, rgba(201,168,76,0.07) 0%, transparent 60%),
+    radial-gradient(ellipse 50% 40% at 50% 50%, rgba(27,42,74,0.6) 0%, transparent 80%);
+  pointer-events: none;
+}
+.hero-grid {
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(201,168,76,0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(201,168,76,0.03) 1px, transparent 1px);
+  background-size: 64px 64px;
+  pointer-events: none;
+}
+/* BCI Logo watermark */
+.hero-watermark {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 55vw;
+  max-width: 700px;
+  opacity: 0.04;
+  pointer-events: none;
+  filter: brightness(0) invert(1);
+}
+
+/* ── NAV ── */
+.nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 24px 48px;
+  position: relative;
+  z-index: 10;
+  border-bottom: 1px solid rgba(201,168,76,0.1);
+}
+.nav-logo {
+  height: 40px;
+  width: auto;
+  filter: brightness(0) invert(1);
+  opacity: 0.9;
+}
+.nav-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(26,122,64,0.1);
+  border: 1px solid rgba(26,122,64,0.22);
+  padding: 8px 18px;
+  border-radius: 100px;
+}
+.nav-status-dot {
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  background: #4ADE80;
+  animation: blink 2s infinite;
+}
+.nav-status-text {
+  font-size: 10px;
+  letter-spacing: 2px;
+  color: #4ADE80;
+  text-transform: uppercase;
+  font-weight: 500;
+}
+
+/* ── HERO CONTENT ── */
+.hero-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 80px 40px 60px;
+  position: relative;
+  z-index: 5;
+}
+.stage-pill {
+  display: inline-block;
+  padding: 6px 22px;
+  border-radius: 100px;
+  font-size: 10px;
+  letter-spacing: 3px;
+  font-weight: 600;
+  text-transform: uppercase;
+  margin-bottom: 24px;
+  background: var(--stage-color, var(--gold));
+  color: #fff;
+  box-shadow: 0 4px 24px rgba(0,0,0,0.3);
+}
+.hero-eyebrow {
+  font-size: 10px;
+  letter-spacing: 5px;
+  color: var(--gold);
+  text-transform: uppercase;
+  margin-bottom: 20px;
+  font-weight: 500;
+}
+.hero-name {
+  font-family: 'Cormorant Garamond', serif;
+  font-size: clamp(56px, 9vw, 100px);
+  font-weight: 300;
+  line-height: 1.0;
+  color: var(--white);
+  margin-bottom: 16px;
+  min-height: 1.1em;
+}
+.hero-tagline {
+  font-family: 'Cormorant Garamond', serif;
+  font-size: clamp(18px, 2.5vw, 24px);
+  font-weight: 300;
+  font-style: italic;
+  color: var(--text-dim);
+  margin-bottom: 44px;
+}
+.divider {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 40px;
+}
+.divider-line {
+  width: 56px; height: 1px;
+  background: linear-gradient(90deg, transparent, var(--gold));
+}
+.divider-line.r { background: linear-gradient(90deg, var(--gold), transparent); }
+.divider-gem {
+  width: 7px; height: 7px;
+  background: var(--gold);
+  transform: rotate(45deg);
+}
+.case-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 14px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(201,168,76,0.22);
+  padding: 13px 28px;
+  border-radius: 100px;
+  margin-bottom: 44px;
+  backdrop-filter: blur(12px);
+}
+.case-tag-label {
+  font-size: 9px;
+  letter-spacing: 3px;
+  color: var(--gold);
+  text-transform: uppercase;
+}
+.case-tag-sep { color: rgba(255,255,255,0.2); }
+.case-tag-val {
+  font-family: 'Roboto Mono', monospace;
+  font-size: 13px;
+  color: var(--white);
+  letter-spacing: 1px;
+}
+.hero-statement {
+  font-size: 15px;
+  color: var(--text-dim);
+  line-height: 2;
+  max-width: 560px;
+  font-weight: 300;
+  margin-bottom: 56px;
+}
+.hero-statement strong { color: var(--white); font-weight: 500; }
+.scroll-cue {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  opacity: 0.3;
+}
+.scroll-cue span {
+  font-size: 9px;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+}
+.scroll-line {
+  width: 1px; height: 44px;
+  background: linear-gradient(180deg, var(--gold), transparent);
+  animation: scroll-pulse 2s infinite;
+}
+@keyframes scroll-pulse {
+  0%   { transform:scaleY(0); transform-origin:top; }
+  50%  { transform:scaleY(1); transform-origin:top; }
+  51%  { transform:scaleY(1); transform-origin:bottom; }
+  100% { transform:scaleY(0); transform-origin:bottom; }
+}
+
+/* ═══════════════════════════════════════════
+   MICRO MOMENT BANNER
+═══════════════════════════════════════════ */
+.micro-banner {
+  background: linear-gradient(135deg, rgba(201,168,76,0.08), rgba(13,27,53,0.6));
+  border-top: 1px solid rgba(201,168,76,0.15);
+  border-bottom: 1px solid rgba(201,168,76,0.15);
+  padding: 28px 48px;
+  text-align: center;
+  font-family: 'Cormorant Garamond', serif;
+  font-size: clamp(18px, 2.5vw, 24px);
+  font-weight: 300;
+  color: rgba(255,255,255,0.88);
+  line-height: 1.7;
+  backdrop-filter: blur(8px);
+}
+.micro-icon { font-size: 26px; margin-right: 12px; }
+
+/* ═══════════════════════════════════════════
+   COUNTDOWN
+═══════════════════════════════════════════ */
+.countdown-wrap {
+  padding: 100px 48px;
+  text-align: center;
+  background: linear-gradient(180deg, rgba(201,168,76,0.04), transparent);
+  border-bottom: 1px solid rgba(201,168,76,0.08);
+}
+.countdown-number {
+  font-family: 'Cormorant Garamond', serif;
+  font-size: clamp(80px, 14vw, 140px);
+  font-weight: 300;
+  color: var(--gold);
+  line-height: 1;
+}
+.countdown-unit {
+  font-size: 10px;
+  letter-spacing: 5px;
+  color: var(--text-faint);
+  text-transform: uppercase;
+  margin: 8px 0 28px;
+}
+.countdown-story {
+  font-family: 'Cormorant Garamond', serif;
+  font-size: clamp(18px, 2.5vw, 24px);
+  font-weight: 300;
+  color: var(--text-dim);
+  line-height: 1.9;
+  max-width: 640px;
+  margin: 0 auto;
+}
+
+/* ═══════════════════════════════════════════
+   SECTION BASE
+═══════════════════════════════════════════ */
+.section {
+  padding: 100px 0;
+  position: relative;
+}
+.section-inner {
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 0 48px;
+}
+.section-eye {
+  font-size: 9px;
+  letter-spacing: 4px;
+  color: var(--gold);
+  text-transform: uppercase;
+  margin-bottom: 14px;
+  font-weight: 500;
+}
+.section-title {
+  font-family: 'Cormorant Garamond', serif;
+  font-size: clamp(32px, 4.5vw, 52px);
+  font-weight: 300;
+  color: var(--white);
+  line-height: 1.15;
+  margin-bottom: 52px;
+}
+
+/* ═══════════════════════════════════════════
+   CASE DETAILS
+═══════════════════════════════════════════ */
+.details-section {
+  background: linear-gradient(160deg, rgba(20,32,64,0.9), rgba(13,27,53,0.9));
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+.details-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1px;
+  background: var(--border);
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  overflow: hidden;
+}
+.detail-cell {
+  background: rgba(13,27,53,0.95);
+  padding: 30px 36px;
+  transition: background 0.3s;
+  backdrop-filter: blur(10px);
+}
+.detail-cell:hover { background: rgba(27,42,74,0.9); }
+.detail-key {
+  font-size: 9px;
+  letter-spacing: 3px;
+  color: var(--gold);
+  text-transform: uppercase;
+  margin-bottom: 12px;
+  font-weight: 500;
+}
+.detail-val {
+  font-family: 'Cormorant Garamond', serif;
+  font-size: 24px;
+  color: var(--white);
+  font-weight: 400;
+}
+.detail-val.mono {
+  font-family: 'Roboto Mono', monospace;
+  font-size: 16px;
+  color: rgba(255,255,255,0.8);
+}
+.detail-val.amount { color: #4ADE80; font-size: 30px; }
+
+/* ═══════════════════════════════════════════
+   TRUST SCORE
+═══════════════════════════════════════════ */
+.trust-section { background: var(--navy); }
+.trust-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 14px;
+}
+.trust-card {
+  background: var(--glass);
+  border: 1px solid var(--glass-border);
+  border-radius: 16px;
+  padding: 22px 20px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  transition: all 0.3s;
+  backdrop-filter: blur(8px);
+}
+.trust-card:hover { transform: translateY(-2px); }
+.trust-card.done {
+  border-color: rgba(74,222,128,0.2);
+  background: rgba(74,222,128,0.04);
+}
+.trust-icon { font-size: 20px; min-width: 28px; text-align: center; }
+.trust-text { font-size: 13px; font-weight: 500; }
+.trust-card.done .trust-text { color: #4ADE80; }
+.trust-card.pending .trust-text { color: var(--text-dim); }
+
+/* ═══════════════════════════════════════════
+   TIMELINE
+═══════════════════════════════════════════ */
+.timeline-section {
+  background: linear-gradient(180deg, var(--navy), var(--navy-mid));
+}
+.timeline {
+  position: relative;
+  padding-left: 60px;
+}
+.timeline::before {
+  content: '';
+  position: absolute;
+  left: 18px;
+  top: 8px; bottom: 8px;
+  width: 1px;
+  background: linear-gradient(180deg, var(--gold) 0%, rgba(201,168,76,0.08) 100%);
+}
+.tl-item {
+  position: relative;
+  margin-bottom: 44px;
+  opacity: 0;
+  transform: translateX(-18px);
+  transition: opacity 0.65s ease, transform 0.65s ease;
+}
+.tl-item.visible { opacity:1; transform:translateX(0); }
+.tl-dot {
+  position: absolute;
+  left: -60px; top: 4px;
+  width: 36px; height: 36px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 700;
+}
+.tl-dot.done {
+  background: rgba(74,222,128,0.12);
+  border: 1px solid rgba(74,222,128,0.3);
+  color: #4ADE80;
+}
+.tl-dot.active {
+  background: var(--stage-color, var(--gold));
+  color: var(--navy);
+  box-shadow: 0 0 0 6px rgba(201,168,76,0.12), 0 0 24px var(--stage-color, var(--gold));
+}
+.tl-dot.pending {
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.1);
+  color: rgba(255,255,255,0.2);
+}
+.tl-card {
+  background: var(--glass);
+  border: 1px solid var(--glass-border);
+  border-radius: 14px;
+  padding: 24px 28px;
+  transition: border-color 0.3s;
+  backdrop-filter: blur(8px);
+}
+.tl-item:hover .tl-card { border-color: var(--border); }
+.tl-status {
+  font-size: 9px;
+  letter-spacing: 2.5px;
+  text-transform: uppercase;
+  margin-bottom: 10px;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.tl-status.done  { color: #4ADE80; }
+.tl-status.now   { color: var(--gold); }
+.tl-status.soon  { color: var(--text-faint); }
+.tl-status::before {
+  content: '';
+  width: 5px; height: 5px;
+  border-radius: 50%;
+  background: currentColor;
+  flex-shrink: 0;
+}
+.tl-title {
+  font-family: 'Cormorant Garamond', serif;
+  font-size: 24px;
+  color: var(--white);
+  margin-bottom: 8px;
+}
+.tl-desc { font-size: 13px; color: var(--text-dim); line-height: 1.75; }
+
+/* ═══════════════════════════════════════════
+   TEAMS
+═══════════════════════════════════════════ */
+.teams-section {
+  background: linear-gradient(180deg, var(--navy-mid), var(--navy));
+  border-top: 1px solid rgba(201,168,76,0.07);
+}
+.teams-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+}
+.team-card {
+  background: rgba(255,255,255,0.02);
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 16px;
+  padding: 30px 26px;
+  position: relative;
+  overflow: hidden;
+  transition: all 0.3s ease;
+}
+.team-card::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, var(--gold), transparent);
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform 0.4s ease;
+}
+.team-card:hover {
+  border-color: rgba(201,168,76,0.2);
+  background: rgba(255,255,255,0.04);
+  transform: translateY(-4px);
+}
+.team-card:hover::before { transform: scaleX(1); }
+.team-icon-wrap {
+  width: 48px; height: 48px;
+  background: rgba(201,168,76,0.1);
+  border-radius: 13px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 18px;
+}
+.team-icon-wrap svg {
+  width: 24px; height: 24px;
+  stroke: var(--gold);
+  fill: none;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.team-name { font-size: 14px; font-weight: 600; color: var(--white); margin-bottom: 8px; }
+.team-desc { font-size: 12px; color: rgba(255,255,255,0.4); line-height: 1.65; }
+
+/* ═══════════════════════════════════════════
+   MESSAGE
+═══════════════════════════════════════════ */
+.message-section { background: var(--navy); }
+.message-card {
+  background: linear-gradient(135deg, rgba(192,57,43,0.07), rgba(27,42,74,0.5));
+  border: 1px solid rgba(192,57,43,0.18);
+  border-radius: 22px;
+  padding: 72px 80px;
+  position: relative;
+  overflow: hidden;
+  backdrop-filter: blur(12px);
+}
+.message-card::before {
+  content: '"';
+  position: absolute;
+  top: -24px; left: 44px;
+  font-family: 'Cormorant Garamond', serif;
+  font-size: 220px;
+  color: rgba(201,168,76,0.05);
+  line-height: 1;
+  pointer-events: none;
+  user-select: none;
+}
+.message-text {
+  font-family: 'Cormorant Garamond', serif;
+  font-size: clamp(20px, 2.5vw, 30px);
+  font-weight: 300;
+  line-height: 1.8;
+  color: rgba(255,255,255,0.92);
+  position: relative;
+  z-index: 1;
+}
+.message-text strong { color: var(--gold); font-weight: 400; }
+.message-sig {
+  margin-top: 44px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.sig-line { width: 44px; height: 1px; background: var(--gold); }
+.sig-text { font-size: 10px; letter-spacing: 2px; color: var(--gold); text-transform: uppercase; }
+
+/* ═══════════════════════════════════════════
+   MEDICAL MEMORY
+═══════════════════════════════════════════ */
+.memory-section {
+  background: linear-gradient(135deg, rgba(74,222,128,0.04), var(--navy));
+  border-top: 1px solid rgba(74,222,128,0.1);
+  border-bottom: 1px solid rgba(74,222,128,0.1);
+}
+.memory-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  margin-bottom: 28px;
+}
+.mem-cell {
+  background: rgba(74,222,128,0.04);
+  border: 1px solid rgba(74,222,128,0.14);
+  border-radius: 14px;
+  padding: 24px 28px;
+}
+.mem-key { font-size: 9px; letter-spacing: 3px; color: #4ADE80; text-transform: uppercase; margin-bottom: 10px; }
+.mem-val { font-family: 'Cormorant Garamond', serif; font-size: 22px; color: var(--white); }
+.mem-notes {
+  font-size: 14px; line-height: 1.8; color: var(--text-dim);
+  background: var(--glass);
+  border: 1px solid var(--glass-border);
+  border-radius: 14px;
+  padding: 24px 28px;
+  margin-bottom: 28px;
+}
+.btn-wa {
+  display: inline-flex; align-items: center; gap: 10px;
+  background: #25D366; color: #fff;
+  padding: 15px 32px; border-radius: 100px;
+  text-decoration: none; font-weight: 600; font-size: 14px;
+  transition: all 0.25s;
+  box-shadow: 0 4px 20px rgba(37,211,102,0.25);
+}
+.btn-wa:hover { transform: translateY(-3px); box-shadow: 0 8px 32px rgba(37,211,102,0.4); }
+
+/* ═══════════════════════════════════════════
+   REFERRAL
+═══════════════════════════════════════════ */
+.referral-section { background: var(--navy-mid); }
+.referral-card {
+  background: linear-gradient(135deg, rgba(201,168,76,0.07), rgba(13,27,53,0.8));
+  border: 1px solid rgba(201,168,76,0.18);
+  border-radius: 22px;
+  padding: 56px 64px;
+  text-align: center;
+  backdrop-filter: blur(12px);
+}
+.ref-desc { font-size: 15px; color: var(--text-dim); line-height: 1.8; margin-bottom: 28px; }
+.ref-url {
+  font-family: 'Roboto Mono', monospace;
+  font-size: 13px;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(201,168,76,0.2);
+  padding: 14px 20px;
+  border-radius: 10px;
+  color: var(--gold);
+  word-break: break-all;
+  margin-bottom: 20px;
+  text-align: left;
+}
+.btn-copy {
+  background: var(--gold); color: var(--navy);
+  border: none; padding: 15px 36px;
+  border-radius: 100px; font-weight: 700;
+  font-size: 14px; cursor: pointer;
+  transition: all 0.25s; letter-spacing: 0.5px;
+  box-shadow: 0 4px 20px rgba(201,168,76,0.3);
+}
+.btn-copy:hover { background: var(--gold-light); transform: translateY(-2px); }
+
+/* ═══════════════════════════════════════════
+   FAMILY LINK
+═══════════════════════════════════════════ */
+.family-row {
+  text-align: center;
+  padding: 36px 48px;
+  border-top: 1px solid rgba(255,255,255,0.04);
+}
+.family-link {
+  color: var(--text-faint);
+  font-size: 12px;
+  text-decoration: none;
+  letter-spacing: 1px;
+  transition: color 0.3s;
+}
+.family-link:hover { color: rgba(255,255,255,0.5); }
+
+/* ═══════════════════════════════════════════
+   CERTIFICATIONS
+═══════════════════════════════════════════ */
+.certs-section {
+  background: linear-gradient(180deg, var(--navy-mid), var(--navy));
+  border-top: 1px solid rgba(201,168,76,0.07);
+  padding: 80px 0;
+}
+.certs-label {
+  font-size: 9px;
+  letter-spacing: 4px;
+  color: var(--text-faint);
+  text-transform: uppercase;
+  text-align: center;
+  margin-bottom: 44px;
+}
+.certs-flex {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 40px;
+  flex-wrap: wrap;
+}
+.cert-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  opacity: 0.45;
+  transition: opacity 0.3s;
+}
+.cert-item:hover { opacity: 0.85; }
+.cert-frame {
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 14px;
+  padding: 18px 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 130px;
+  min-height: 66px;
+}
+.cert-name { font-size: 9px; letter-spacing: 2px; color: var(--text-faint); text-transform: uppercase; text-align: center; }
+
+/* Health Türkiye Official Logo */
+.ht-logo {
+  display: flex; align-items: center; gap: 8px;
+}
+.ht-crescent {
+  width: 26px; height: 26px;
+  background: #E30A17;
+  border-radius: 50%;
+  position: relative;
+  display: flex; align-items: center; justify-content: center;
+}
+.ht-crescent::after {
+  content: '★';
+  color: white;
+  font-size: 8px;
+  position: absolute;
+  right: 2px;
+}
+.ht-text { font-size: 11px; font-weight: 700; color: rgba(255,255,255,0.7); letter-spacing: 0.5px; line-height: 1.3; }
+
+/* Ministry SVG */
+.ministry-badge {
+  display: flex; flex-direction: column; align-items: center; gap: 4px;
+}
+.ministry-eagle { font-size: 22px; }
+.ministry-text { font-size: 8px; letter-spacing: 1px; color: rgba(255,255,255,0.5); text-align: center; line-height: 1.4; }
+
+/* USHAŞ */
+.ushas-badge {
+  background: linear-gradient(135deg, #C0392B, #922B21);
+  padding: 6px 14px;
+  border-radius: 6px;
+  display: flex; flex-direction: column; align-items: center; gap: 2px;
+}
+.ushas-text { font-size: 15px; font-weight: 800; color: white; letter-spacing: 1px; }
+.ushas-sub { font-size: 7px; letter-spacing: 0.5px; color: rgba(255,255,255,0.7); }
+
+/* BCI in cert */
+.bci-cert {
+  display: flex; flex-direction: column; align-items: center; gap: 4px;
+}
+.bci-cert-logo { height: 32px; width: auto; filter: brightness(0) invert(0.7); }
+.bci-cert-text { font-size: 8px; letter-spacing: 1px; color: rgba(255,255,255,0.4); }
+
+/* ═══════════════════════════════════════════
+   FOOTER
+═══════════════════════════════════════════ */
+.footer {
+  background: #060E1C;
+  padding: 60px 48px;
+  border-top: 1px solid rgba(201,168,76,0.1);
+  text-align: center;
+}
+.footer-logo {
+  height: 44px; width: auto;
+  filter: brightness(0) invert(1);
+  opacity: 0.4;
+  margin-bottom: 20px;
+}
+.footer-text { font-size: 11px; color: rgba(255,255,255,0.18); line-height: 1.9; max-width: 600px; margin: 0 auto; }
+.footer-ref { font-family: 'Roboto Mono', monospace; font-size: 11px; color: rgba(201,168,76,0.35); margin-top: 24px; letter-spacing: 2px; }
+
+/* ═══════════════════════════════════════════
+   REVEAL ANIMATION
+═══════════════════════════════════════════ */
+.reveal {
+  opacity: 0;
+  transform: translateY(28px);
+  transition: opacity 0.8s ease, transform 0.8s ease;
+}
+.reveal.visible { opacity:1; transform:translateY(0); }
+
+/* ═══════════════════════════════════════════
+   MOBILE
+═══════════════════════════════════════════ */
+@media (max-width: 768px) {
+  .nav { padding: 18px 24px; }
+  .hero-body { padding: 60px 24px 48px; }
+  .section-inner { padding: 0 24px; }
+  .section { padding: 72px 0; }
+  .details-grid { grid-template-columns: 1fr; }
+  .teams-grid { grid-template-columns: 1fr 1fr; }
+  .trust-grid { grid-template-columns: 1fr 1fr; }
+  .memory-grid { grid-template-columns: 1fr; }
+  .message-card { padding: 40px 28px; }
+  .referral-card { padding: 40px 28px; }
+  .pulse-strip { padding: 12px 24px; font-size: 11px; }
+  .micro-banner { padding: 24px; font-size: 17px; }
+  .countdown-wrap { padding: 72px 24px; }
+  .certs-flex { gap: 24px; }
+  .footer { padding: 44px 24px; }
+  .hero-watermark { width: 90vw; }
+}
+@media (max-width: 480px) {
+  .teams-grid { grid-template-columns: 1fr; }
+  .trust-grid { grid-template-columns: 1fr; }
+  .hero-name { font-size: 44px; }
+  .nav-logo { height: 32px; }
+}
+</style>
+</head>
+<body>
+
+<!-- CANVAS PARTICLES -->
+<canvas id="bg-canvas"></canvas>
+
+<!-- ACTIVATION SCREEN -->
+<div id="activation">
+  <img class="act-logo" id="act-logo-img" src="" alt="BCI">
+  <div class="act-rings">
+    <div class="act-ring"></div>
+    <div class="act-ring"></div>
+    <div class="act-ring"></div>
+    <div class="act-center">
+      <svg class="act-heartbeat" viewBox="0 0 60 30" fill="none">
+        <polyline points="0,15 10,15 14,5 20,25 26,8 32,20 36,15 60,15"
+          stroke="#C9A84C" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+          stroke-dasharray="200" stroke-dashoffset="200">
+          <animate attributeName="stroke-dashoffset" from="200" to="0" dur="1.4s" begin="1.3s" fill="freeze"/>
+        </polyline>
+      </svg>
+    </div>
+  </div>
+  <div class="act-label">Best Clinic Istanbul</div>
+  <div class="act-name" id="act-patient-name">Loading...</div>
+  <div class="act-subtitle">Patient Journey Portal</div>
+  <div class="act-bar"><div class="act-bar-fill"></div></div>
+</div>
+
+<!-- PORTAL -->
+<div id="portal">
+  <div class="progress-bar"><div class="progress-fill" id="prog-fill"></div></div>
+
+  <!-- PULSE STRIP -->
+  <div class="pulse-strip">
+    <div class="pulse-dot" id="pulse-dot"></div>
+    <span id="pulse-text">Connecting to your case...</span>
+  </div>
+
+  <!-- HERO -->
+  <div class="hero">
+    <div class="hero-mesh"></div>
+    <div class="hero-grid"></div>
+    <img class="hero-watermark" id="wm-logo" src="" alt="">
+
+    <nav class="nav">
+      <img class="nav-logo" id="nav-logo" src="" alt="Best Clinic Istanbul">
+      <div class="nav-status">
+        <div class="nav-status-dot"></div>
+        <div class="nav-status-text">Journey Active</div>
+      </div>
+    </nav>
+
+    <div class="hero-body">
+      <div class="hero-eyebrow">Patient Journey Portal</div>
+      <div class="stage-pill" id="stage-pill">Loading...</div>
+      <div class="hero-name" id="hero-name"></div>
+      <div class="hero-tagline">Your medical journey has officially begun</div>
+      <div class="divider">
+        <div class="divider-line"></div>
+        <div class="divider-gem"></div>
+        <div class="divider-line r"></div>
+      </div>
+      <div class="case-tag">
+        <span class="case-tag-label">Case ID</span>
+        <span class="case-tag-sep">·</span>
+        <span class="case-tag-val" id="case-id-tag">—</span>
+        <span class="case-tag-sep">·</span>
+        <span class="case-tag-label">Activated</span>
+        <span class="case-tag-sep">·</span>
+        <span class="case-tag-val" id="act-date-tag">—</span>
+      </div>
+      <div class="hero-statement">
+        From this moment, <strong>Best Clinic Istanbul</strong> has officially opened your case.
+        Your file has entered our Patient Experience &amp; Operations System,
+        and multiple departments are now working on your behalf.
+      </div>
+      <div class="scroll-cue">
+        <span>Your Journey</span>
+        <div class="scroll-line"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MICRO MOMENT -->
+  <div class="micro-banner" id="micro-banner" style="display:none">
+    <span class="micro-icon" id="micro-icon"></span>
+    <span id="micro-text"></span>
+  </div>
+
+  <!-- COUNTDOWN -->
+  <div class="countdown-wrap" id="countdown-wrap" style="display:none">
+    <div class="section-eye" id="cd-label"></div>
+    <div class="countdown-number" id="cd-number"></div>
+    <div class="countdown-unit" id="cd-unit"></div>
+    <div class="countdown-story" id="cd-story"></div>
+  </div>
+
+  <!-- CASE DETAILS -->
+  <div class="section details-section">
+    <div class="section-inner">
+      <div class="section-eye reveal">Case Activation Record</div>
+      <div class="section-title reveal">Your Official Case Details</div>
+      <div class="details-grid reveal" id="details-grid">
+        <!-- injected -->
+      </div>
+    </div>
+  </div>
+
+  <!-- TRUST SCORE -->
+  <div class="section trust-section">
+    <div class="section-inner">
+      <div class="section-eye reveal">Transparency</div>
+      <div class="section-title reveal">What's Been Confirmed For You</div>
+      <div class="trust-grid reveal" id="trust-grid">
+        <!-- injected -->
+      </div>
+    </div>
+  </div>
+
+  <!-- TIMELINE -->
+  <div class="section timeline-section">
+    <div class="section-inner">
+      <div class="section-eye reveal">What Happens Next</div>
+      <div class="section-title reveal">Your Journey Timeline</div>
+      <div class="timeline" id="timeline">
+        <!-- injected -->
+      </div>
+    </div>
+  </div>
+
+  <!-- TEAMS -->
+  <div class="section teams-section" id="teams-section" style="display:none">
+    <div class="section-inner">
+      <div class="section-eye reveal">Behind The Scenes</div>
+      <div class="section-title reveal">6 Departments Working For You Right Now</div>
+      <div class="teams-grid reveal">
+        <div class="team-card">
+          <div class="team-icon-wrap"><svg viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></div>
+          <div class="team-name">Medical Coordination</div>
+          <div class="team-desc">Your surgeon and clinical team have been notified. Pre-operative planning has been initiated for your specific treatment.</div>
+        </div>
+        <div class="team-card">
+          <div class="team-icon-wrap"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg></div>
+          <div class="team-name">Patient Operations</div>
+          <div class="team-desc">Your case file has entered our patient operations system. All logistics are being tracked, assigned, and monitored.</div>
+        </div>
+        <div class="team-card">
+          <div class="team-icon-wrap"><svg viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg></div>
+          <div class="team-name">Scheduling</div>
+          <div class="team-desc">Operation rooms, consultation slots, and recovery arrangements are being coordinated based on your treatment plan.</div>
+        </div>
+        <div class="team-card">
+          <div class="team-icon-wrap"><svg viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13S3 17 3 10a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg></div>
+          <div class="team-name">Travel &amp; Transfers</div>
+          <div class="team-desc">Airport pickup, hotel coordination, and intercity transfers are being organized for a seamless arrival experience.</div>
+        </div>
+        <div class="team-card">
+          <div class="team-icon-wrap"><svg viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg></div>
+          <div class="team-name">Accommodation</div>
+          <div class="team-desc">Hotel and post-operative accommodation is being confirmed based on your package and recovery requirements.</div>
+        </div>
+        <div class="team-card">
+          <div class="team-icon-wrap"><svg viewBox="0 0 24 24"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg></div>
+          <div class="team-name">Patient Support</div>
+          <div class="team-desc">A dedicated support contact will be assigned to you before your arrival to answer every question.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MESSAGE -->
+  <div class="section message-section">
+    <div class="section-inner">
+      <div class="message-card reveal">
+        <div class="message-text">
+          You have taken the first and most important step.
+          From this moment, you are not navigating this alone —
+          <strong>an entire organization is moving on your behalf.</strong>
+          We will be in touch very soon to begin the detailed preparation of your journey.
+          Welcome to Best Clinic Istanbul.
+        </div>
+        <div class="message-sig">
+          <div class="sig-line"></div>
+          <div class="sig-text">Patient Experience &amp; Operations Department · BCI Istanbul</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MEDICAL MEMORY (COMPLETED) -->
+  <div class="section memory-section" id="memory-section" style="display:none">
+    <div class="section-inner">
+      <div class="section-eye reveal">Your Permanent Record</div>
+      <div class="section-title reveal">Medical Memory</div>
+      <div class="memory-grid reveal" id="memory-grid"></div>
+      <div class="mem-notes reveal" id="mem-notes" style="display:none"></div>
+      <div class="reveal" style="text-align:center;margin-top:24px">
+        <a href="https://wa.me/905431574540" class="btn-wa">📞 Contact BCI for Follow-up</a>
+      </div>
+    </div>
+  </div>
+
+  <!-- REFERRAL (COMPLETED) -->
+  <div class="section referral-section" id="referral-section" style="display:none">
+    <div class="section-inner">
+      <div class="section-eye reveal" style="text-align:center">Share Your Experience</div>
+      <div class="section-title reveal" style="text-align:center">Refer a Friend</div>
+      <div class="referral-card reveal">
+        <div class="ref-desc">Every friend you refer to Best Clinic Istanbul earns you a special reward. Share your personal link and we'll take care of the rest.</div>
+        <div class="ref-url" id="ref-url"></div>
+        <button class="btn-copy" onclick="copyRef()">Copy My Referral Link</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- FAMILY LINK -->
+  <div class="family-row">
+    <a class="family-link" id="family-link" href="#">Share with Family →</a>
+  </div>
+
+  <!-- CERTIFICATIONS -->
+  <div class="certs-section">
+    <div class="section-inner">
+      <div class="certs-label">Accreditations &amp; Official Authorizations</div>
+      <div class="certs-flex">
+
+        <!-- BCI -->
+        <div class="cert-item">
+          <div class="cert-frame">
+            <div class="bci-cert">
+              <img class="bci-cert-logo" id="cert-bci-logo" src="" alt="BCI">
+            </div>
+          </div>
+          <div class="cert-name">Best Clinic Istanbul</div>
+        </div>
+
+        <!-- Health Türkiye -->
+        <div class="cert-item">
+          <div class="cert-frame">
+            <div class="ht-logo">
+              <div class="ht-crescent"></div>
+              <div class="ht-text">HEALTH<br>TÜRKİYE</div>
+            </div>
+          </div>
+          <div class="cert-name">Health Türkiye</div>
+        </div>
+
+        <!-- Ministry -->
+        <div class="cert-item">
+          <div class="cert-frame">
+            <div class="ministry-badge">
+              <div class="ministry-eagle">🦅</div>
+              <div class="ministry-text">T.C. SAĞLIK<br>BAKANLIĞI</div>
+            </div>
+          </div>
+          <div class="cert-name">Ministry of Health · Turkey</div>
+        </div>
+
+        <!-- USHAŞ -->
+        <div class="cert-item">
+          <div class="cert-frame">
+            <div class="ushas-badge">
+              <div class="ushas-text">USHAŞ</div>
+              <div class="ushas-sub">INTERNATIONAL HEALTH</div>
+            </div>
+          </div>
+          <div class="cert-name">International Health Services</div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- FOOTER -->
+  <footer class="footer">
+    <img class="footer-logo" id="footer-logo" src="" alt="BCI">
+    <div class="footer-text">
+      This document confirms the activation of your patient journey following deposit registration.
+      It is an official record issued by the Patient Experience &amp; Operations Department.
+      For any inquiries, please contact your assigned case manager.
+    </div>
+    <div class="footer-ref" id="footer-ref"></div>
+  </footer>
+</div><!-- /portal -->
+
+<script src="logo.js"></script>
+<script>
+// ══════════════════════════════════════════════════
+//  CONFIG — غيّر هاد الرابط لرابط Apps Script الخاص فيك
+// ══════════════════════════════════════════════════
+const API_URL = 'https://script.google.com/macros/s/YOUR_DEPLOYMENT_ID/exec';
+
+// ══════════════════════════════════════════════════
+//  LOGO INJECTION
+// ══════════════════════════════════════════════════
+function injectLogos() {
+  const src = typeof BCI_LOGO !== 'undefined' ? BCI_LOGO : '';
+  ['act-logo-img','nav-logo','wm-logo','cert-bci-logo','footer-logo'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.src = src;
+  });
+}
+
+// ══════════════════════════════════════════════════
+//  PARTICLE CANVAS
+// ══════════════════════════════════════════════════
+function initCanvas() {
+  const canvas = document.getElementById('bg-canvas');
+  const ctx = canvas.getContext('2d');
+  let W, H, particles = [];
+
+  function resize() {
+    W = canvas.width  = window.innerWidth;
+    H = canvas.height = window.innerHeight;
+  }
+  resize();
+  window.addEventListener('resize', resize);
+
+  class Particle {
+    constructor() { this.reset(); }
+    reset() {
+      this.x = Math.random() * W;
+      this.y = Math.random() * H;
+      this.vx = (Math.random() - 0.5) * 0.25;
+      this.vy = (Math.random() - 0.5) * 0.25;
+      this.r = Math.random() * 1.5 + 0.3;
+      this.alpha = Math.random() * 0.35 + 0.05;
+      this.gold = Math.random() > 0.72;
+    }
+    update() {
+      this.x += this.vx;
+      this.y += this.vy;
+      if (this.x < 0 || this.x > W || this.y < 0 || this.y > H) this.reset();
+    }
+    draw() {
+      ctx.beginPath();
+      ctx.arc(this.x, this.y, this.r, 0, Math.PI * 2);
+      ctx.fillStyle = this.gold
+        ? `rgba(201,168,76,${this.alpha})`
+        : `rgba(255,255,255,${this.alpha * 0.5})`;
+      ctx.fill();
+    }
+  }
+
+  for (let i = 0; i < 90; i++) particles.push(new Particle());
+
+  function loop() {
+    ctx.clearRect(0, 0, W, H);
+    particles.forEach(p => { p.update(); p.draw(); });
+    // Draw faint connections
+    for (let i = 0; i < particles.length; i++) {
+      for (let j = i + 1; j < particles.length; j++) {
+        const dx = particles[i].x - particles[j].x;
+        const dy = particles[i].y - particles[j].y;
+        const dist = Math.sqrt(dx*dx + dy*dy);
+        if (dist < 120) {
+          ctx.beginPath();
+          ctx.moveTo(particles[i].x, particles[i].y);
+          ctx.lineTo(particles[j].x, particles[j].y);
+          ctx.strokeStyle = `rgba(201,168,76,${0.04 * (1 - dist/120)})`;
+          ctx.lineWidth = 0.5;
+          ctx.stroke();
+        }
+      }
+    }
+    requestAnimationFrame(loop);
+  }
+  loop();
+}
+
+// ══════════════════════════════════════════════════
+//  STAGE CONFIG
+// ══════════════════════════════════════════════════
+const STAGE_CFG = {
+  ACTIVATION:   { label:'Journey Activated',    color:'#C9A84C', pct:14 },
+  PLANNING:     { label:'Planning Your Journey', color:'#3B82F6', pct:28 },
+  TRAVEL_READY: { label:'Ready For Istanbul',    color:'#10B981', pct:42 },
+  IN_ISTANBUL:  { label:'Welcome To Istanbul',   color:'#8B5CF6', pct:57 },
+  TREATMENT:    { label:'Transformation Day',    color:'#EF4444', pct:72 },
+  RECOVERY:     { label:'Recovery & Rest',       color:'#F59E0B', pct:86 },
+  COMPLETED:    { label:'Journey Complete',       color:'#059669', pct:100 },
+};
+
+// ══════════════════════════════════════════════════
+//  FETCH DATA
+// ══════════════════════════════════════════════════
+async function loadPortal() {
+  const params = new URLSearchParams(window.location.search);
+  const p = params.get('p') || '';
+  const ref = params.get('ref') || '';
+  const view = params.get('view') || '';
+
+  if (view === 'family') {
+    window.location.href = API_URL + '?p=' + encodeURIComponent(p) + '&view=family';
+    return;
+  }
+
+  if (!p) { showError('No patient key provided.'); return; }
+
+  try {
+    const res = await fetch(API_URL + '?p=' + encodeURIComponent(p) + '&format=json');
+    const data = await res.json();
+    if (data.error) { showError(data.error); return; }
+    renderPortal(data, p);
+  } catch(e) {
+    // Fallback: redirect to Apps Script (handles HTML rendering)
+    window.location.href = API_URL + '?p=' + encodeURIComponent(p);
+  }
+}
+
+// ══════════════════════════════════════════════════
+//  RENDER
+// ══════════════════════════════════════════════════
+function renderPortal(d, key) {
+  const stage = d.stage || 'ACTIVATION';
+  const cfg   = STAGE_CFG[stage] || STAGE_CFG.ACTIVATION;
+
+  // CSS variable for stage color
+  document.documentElement.style.setProperty('--stage-color', cfg.color);
+
+  // Activation screen name
+  document.getElementById('act-patient-name').textContent = d.patient || 'Welcome';
+
+  // Progress
+  document.getElementById('prog-fill').style.width = cfg.pct + '%';
+
+  // Pulse
+  document.getElementById('pulse-dot').style.background = cfg.color;
+  document.getElementById('pulse-text').textContent = d.pulse || 'Your case is active';
+
+  // Stage pill
+  const pill = document.getElementById('stage-pill');
+  pill.textContent = cfg.label;
+  pill.style.background = cfg.color;
+
+  // Hero name — typewriter after activation
+  const nameEl = document.getElementById('hero-name');
+  nameEl.dataset.name = d.patient || '';
+
+  // Case tag
+  document.getElementById('case-id-tag').textContent = d.caseId || '—';
+  document.getElementById('act-date-tag').textContent = d.depositDate || '—';
+
+  // Micro moment
+  if (d.micro) {
+    document.getElementById('micro-banner').style.display = '';
+    document.getElementById('micro-icon').textContent = d.micro.icon;
+    document.getElementById('micro-text').textContent  = d.micro.text;
+  }
+
+  // Countdown
+  if (d.countdown) {
+    document.getElementById('countdown-wrap').style.display = '';
+    document.getElementById('cd-label').textContent  = d.countdown.label;
+    document.getElementById('cd-number').textContent = d.countdown.days;
+    document.getElementById('cd-unit').textContent   = d.countdown.days === 1 ? 'Day' : 'Days';
+    document.getElementById('cd-story').innerHTML    = (d.countdown.story || '').replace(/\n/g,'<br>');
+  }
+
+  // Details grid
+  const dg = document.getElementById('details-grid');
+  const cells = [
+    ['Full Name',         d.patient,                      ''],
+    ['Treatment Plan',    d.treatment || 'To be confirmed',''],
+    ['Deposit Confirmed', d.deposit + ' ' + d.currency,   'amount'],
+    ['Total Package',     d.pkg > 0 ? d.pkg + ' ' + d.currency : 'To be confirmed', ''],
+    ['Payment Reference', d.payCode,                       'mono'],
+    ['Case Manager',      d.coord || d.agent || '—',      ''],
+    d.arrDate ? ['Arrival Date', d.arrDateFmt + (d.arrFlt ? ' · ' + d.arrFlt : ''), 'mono'] : null,
+    d.hotel1  ? ['Hotel',         d.hotel1,               ''] : null,
+    d.opDate  ? ['Operation Date',d.opDateFmt + (d.doctor ? ' · Dr. ' + d.doctor : ''), 'mono'] : null,
+    d.hospital? ['Hospital',      d.hospital,             ''] : null,
+  ].filter(Boolean);
+
+  dg.innerHTML = cells.map(([k,v,cls]) =>
+    `<div class="detail-cell">
+      <div class="detail-key">${k}</div>
+      <div class="detail-val ${cls}">${v}</div>
+    </div>`
+  ).join('');
+
+  // Trust score
+  const tg = document.getElementById('trust-grid');
+  const trustItems = [
+    { label:'Deposit Confirmed',     done: true },
+    { label:'Hotel Confirmed',       done: d.h1Status === 'Confirmed' },
+    { label:'Driver Assigned',       done: !!d.driver },
+    { label:'Medical Team Notified', done: !!(d.hospital || d.doctor) },
+    { label:'Operation Date Set',    done: !!d.opDate },
+    { label:'Flight Registered',     done: !!d.arrFlt },
+  ];
+  tg.innerHTML = trustItems.map(t =>
+    `<div class="trust-card ${t.done ? 'done' : 'pending'}">
+      <div class="trust-icon">${t.done ? '✅' : '⏳'}</div>
+      <div class="trust-text">${t.label}</div>
+    </div>`
+  ).join('');
+
+  // Timeline
+  buildTimeline(stage);
+
+  // Teams (ACTIVATION / PLANNING only)
+  if (stage === 'ACTIVATION' || stage === 'PLANNING') {
+    document.getElementById('teams-section').style.display = '';
+  }
+
+  // Medical Memory (COMPLETED)
+  if (stage === 'COMPLETED') {
+    document.getElementById('memory-section').style.display = '';
+    const mg = document.getElementById('memory-grid');
+    const memItems = [
+      d.opDate   ? ['Operation Date', d.opDateFmt] : null,
+      d.doctor   ? ['Surgeon',        'Dr. ' + d.doctor] : null,
+      d.hospital ? ['Hospital',       d.hospital] : null,
+      d.treatment? ['Procedure',      d.treatment] : null,
+    ].filter(Boolean);
+    mg.innerHTML = memItems.map(([k,v]) =>
+      `<div class="mem-cell"><div class="mem-key">${k}</div><div class="mem-val">${v}</div></div>`
+    ).join('');
+    if (d.postNotes) {
+      const mn = document.getElementById('mem-notes');
+      mn.textContent = d.postNotes;
+      mn.style.display = '';
+    }
+    // Referral
+    document.getElementById('referral-section').style.display = '';
+    const refUrl = window.location.origin + window.location.pathname + '?p=' + encodeURIComponent(key) + '&ref=' + encodeURIComponent(key);
+    document.getElementById('ref-url').textContent = refUrl;
+    window._refUrl = refUrl;
+  }
+
+  // Family link
+  const fUrl = (d.familyUrl || API_URL + '?p=' + encodeURIComponent(key) + '&view=family');
+  document.getElementById('family-link').href = fUrl;
+
+  // Footer
+  document.getElementById('footer-ref').textContent =
+    'REF: ' + d.payCode + ' · ' + d.depositDate + ' · ' + d.caseId;
+
+  // Start activation sequence
+  startActivation();
+}
+
+// ══════════════════════════════════════════════════
+//  TIMELINE BUILDER
+// ══════════════════════════════════════════════════
+function buildTimeline(stage) {
+  const s = ['ACTIVATION','PLANNING','TRAVEL_READY','IN_ISTANBUL','TREATMENT','RECOVERY','COMPLETED'];
+  const si = s.indexOf(stage);
+
+  const steps = [
+    { title:'Deposit Received & Case Opened',
+      desc:'Your deposit has been confirmed and your patient case has been officially opened. Your journey has begun.',
+      idx:0 },
+    { title:'Medical & Operations Review',
+      desc:'Our medical coordination team is reviewing your treatment plan. The operations department is beginning internal scheduling.',
+      idx:1 },
+    { title:'Travel & Accommodation Setup',
+      desc:'Hotel arrangements, airport transfers, and your complete Istanbul itinerary will be prepared by our hospitality team.',
+      idx:2 },
+    { title:'Arrival in Istanbul & Welcome',
+      desc:'You will be welcomed by a dedicated member of our team from the moment you land. Your coordinator will be with you every step.',
+      idx:3 },
+    { title:'Treatment Day',
+      desc:'Your medical team is fully prepared. The entire clinical and support staff is focused on delivering the best possible outcome for you.',
+      idx:4 },
+    { title:'Recovery & Return Home',
+      desc:'Post-operative care, follow-up appointments, and full support until your safe return home.',
+      idx:5 },
+  ];
+
+  const tl = document.getElementById('timeline');
+  tl.innerHTML = steps.map(step => {
+    const done   = si > step.idx;
+    const active = si === step.idx;
+    const dotCls = done ? 'done' : active ? 'active' : 'pending';
+    const dotTxt = done ? '✓' : active ? '→' : step.idx + 1;
+    const stCls  = done ? 'done' : active ? 'now' : 'soon';
+    const stTxt  = done ? 'Completed' : active ? 'In Progress' : 'Upcoming';
+    return `<div class="tl-item">
+      <div class="tl-dot ${dotCls}">${dotTxt}</div>
+      <div class="tl-card">
+        <div class="tl-status ${stCls}">${stTxt}</div>
+        <div class="tl-title">${step.title}</div>
+        <div class="tl-desc">${step.desc}</div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// ══════════════════════════════════════════════════
+//  ACTIVATION SEQUENCE
+// ══════════════════════════════════════════════════
+function startActivation() {
+  setTimeout(() => {
+    document.getElementById('activation').classList.add('out');
+    document.getElementById('portal').classList.add('visible');
+    startTypewriter();
+    startReveal();
+  }, 4400);
+}
+
+function startTypewriter() {
+  const el = document.getElementById('hero-name');
+  const text = el.dataset.name || '';
+  el.textContent = '';
+  let i = 0;
+  const t = setInterval(() => {
+    if (i < text.length) { el.textContent += text[i++]; }
+    else clearInterval(t);
+  }, 58);
+}
+
+// ══════════════════════════════════════════════════
+//  SCROLL REVEAL
+// ══════════════════════════════════════════════════
+function startReveal() {
+  const obs = new IntersectionObserver(entries => {
+    entries.forEach(e => {
+      if (e.isIntersecting) {
+        e.target.classList.add('visible');
+        obs.unobserve(e.target);
+      }
+    });
+  }, { threshold: 0.1 });
+
+  document.querySelectorAll('.reveal').forEach(el => obs.observe(el));
+
+  document.querySelectorAll('.tl-item').forEach((el, i) => {
+    el.style.transitionDelay = (i * 0.18) + 's';
+    obs.observe(el);
+  });
+}
+
+// ══════════════════════════════════════════════════
+//  COPY REFERRAL
+// ══════════════════════════════════════════════════
+function copyRef() {
+  const url = window._refUrl || document.getElementById('ref-url').textContent;
+  navigator.clipboard?.writeText(url).catch(() => fallbackCopy(url));
+  const btn = document.querySelector('.btn-copy');
+  const orig = btn.textContent;
+  btn.textContent = '✓ Copied!';
+  btn.style.background = '#4ADE80';
+  btn.style.color = '#0D1B35';
+  setTimeout(() => { btn.textContent = orig; btn.style.background = ''; btn.style.color = ''; }, 2500);
+}
+function fallbackCopy(text) {
+  const ta = document.createElement('textarea');
+  ta.value = text;
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  document.body.removeChild(ta);
+}
+
+// ══════════════════════════════════════════════════
+//  ERROR
+// ══════════════════════════════════════════════════
+function showError(msg) {
+  document.getElementById('activation').innerHTML = `
+    <img style="height:60px;filter:brightness(0) invert(1);opacity:0.6;margin-bottom:32px" src="" id="err-logo">
+    <div style="font-size:10px;letter-spacing:4px;color:#C9A84C;margin-bottom:16px">BEST CLINIC ISTANBUL</div>
+    <div style="font-family:'Cormorant Garamond',serif;font-size:28px;margin-bottom:12px">Record Not Found</div>
+    <div style="font-size:13px;color:rgba(255,255,255,0.4);margin-bottom:32px">Please contact your coordinator.</div>
+    <a href="https://wa.me/905431574540" style="background:#25D366;color:#fff;padding:13px 28px;border-radius:100px;text-decoration:none;font-weight:600">Contact Us</a>
+  `;
+  if (typeof BCI_LOGO !== 'undefined') {
+    const el = document.getElementById('err-logo');
+    if (el) el.src = BCI_LOGO;
+  }
+}
+
+// ══════════════════════════════════════════════════
+//  INIT
+// ══════════════════════════════════════════════════
+window.addEventListener('load', () => {
+  injectLogos();
+  initCanvas();
+  loadPortal();
+});
+</script>
+</body>
+</html>
